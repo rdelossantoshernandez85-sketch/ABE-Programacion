@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ABE 200 Niveles - CBTIS 242</title>
+<script src="https://unpkg.com/peerjs@1.5.3/dist/peerjs.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@600;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0A0A0B;color:#fff;font-family:'Inter',sans-serif;min-height:100vh}
+.card{background:#151517;border:1px solid #232326;border-radius:20px;padding:24px}
+.btn{padding:14px;border-radius:12px;border:0;font-weight:700;cursor:pointer;width:100%}
+.btn-p{background:#00FF88;color:#000}.btn-s{background:#232326;color:#fff}
+#game{display:none;min-height:100vh;flex-direction:column}
+#top{height:56px;background:#151517;border-bottom:1px solid #232326;display:flex;justify-content:space-between;align-items:center;padding:0 16px;font-size:12px}
+.grid{display:grid;grid-template-columns:1.2fr.8fr;gap:16px;padding:16px;max-width:1200px;margin:auto;width:100%;flex:1}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.code{background:#0F0F10;border:1px solid #232326;border-radius:14px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px}
+.live{background:#fff;border-radius:14px;min-height:240px;display:flex;align-items:center;justify-content:center;color:#000}
+input,select{background:#0F0F10;border:1px solid #232326;border-radius:10px;padding:12px;color:#fff;width:100%;font-family:'JetBrains Mono',monospace}
+.bar{height:6px;background:#232326;border-radius:100px;overflow:hidden;margin:8px 0}
+.bar-fill{height:100%;background:#00FF88;transition:.3s}
+</style>
+</head>
+<body>
+
+<div id="menu" style="max-width:520px;margin:auto;padding:24px">
+<div style="margin:30px 0"><span style="font-size:10px;letter-spacing:2px;opacity:.5;border:1px solid #232326;padding:4px 10px;border-radius:100px">CBTIS 242 • 200 NIVELES</span>
+<h1 style="font-size:48px;font-weight:900;margin:14px 0">ABE<span style="color:#00FF88">.</span></h1>
+<p style="font-family:'JetBrains Mono';font-size:11px;opacity:.6">200 bugs reales. De Novato a Senior. Con Live Preview.</p>
+</div>
+<div class="card">
+<input id="pName" placeholder="Tu nombre">
+<div style="display:flex;gap:8px;margin-top:8px"><select id="pCount"><option value="2">2 jugadores</option><option value="3">3 jugadores</option><option value="4">4 jugadores</option></select><select id="diff"><option value="all">200 Mix</option><option value="aprendiz">1-70 Aprendiz</option><option value="intermedio">71-140 Intermedio</option><option value="experto">141-200 Experto</option></select></div>
+<div style="display:flex;gap:8px;margin:8px 0"><button class="btn btn-s" style="flex:1" onclick="crear()">Crear sala</button><button class="btn btn-s" style="flex:1" onclick="unir()">Unirse</button></div>
+<input id="roomCode" placeholder="Código sala"><div id="mpStatus" style="font-size:10px;color:#00FF88;margin-top:6px;font-family:'JetBrains Mono'"></div><div id="players" style="font-size:11px;font-family:'JetBrains Mono';margin-top:6px"></div>
+<div id="stats" style="font-family:'JetBrains Mono';font-size:10px;margin:12px 0;opacity:.7"></div>
+<div class="bar"><div id="progress" class="bar-fill" style="width:0%"></div></div>
+<div id="progText" style="font-family:'JetBrains Mono';font-size:10px;opacity:.5">Progreso: 0/200</div>
+<button class="btn btn-p" onclick="startSolo()" style="margin-top:12px">JUGAR 200 NIVELES →</button>
+<button class="btn btn-s" style="margin-top:8px" onclick="startMulti()">MULTIJUGADOR →</button>
+</div>
+</div>
+
+<div id="game">
+<div id="top"><span id="tInfo" style="font-family:'JetBrains Mono'"></span><span id="tScore" style="font-family:'JetBrains Mono'"></span><span id="tLives"></span></div>
+<div class="bar" style="margin:0 16px"><div id="gameProgress" class="bar-fill" style="width:0%"></div></div>
+<div class="grid">
+<div class="card"><div style="display:flex;justify-content:space-between"><span id="qT" style="font-weight:900"></span><span id="qN" style="font-family:'JetBrains Mono';font-size:10px;opacity:.5"></span></div><div id="qD" style="font-family:'JetBrains Mono';font-size:11px;opacity:.6;margin:8px 0"></div><div class="code" id="qCode"></div><div style="display:flex;gap:8px;margin-top:12px"><input id="ans" placeholder="Fix..."><button class="btn btn-p" style="width:110px" onclick="check()">Probar</button></div><div id="feed" style="font-family:'JetBrains Mono';font-size:11px;margin-top:8px"></div></div>
+<div class="card" style="padding:0"><div style="font-size:10px;padding:10px;opacity:.5;font-family:'JetBrains Mono';border-bottom:1px solid #232326">LIVE</div><div id="live" class="live"></div><div id="mBoard" style="font-family:'JetBrains Mono';font-size:11px;padding:10px"></div></div>
+</div>
+</div>
+
+<script>
+let stats=JSON.parse(localStorage.getItem('abe200')||'{"w":0,"l":0,"pts":0,"max":0}');
+let peer=null,conns=[],isHost=false,players={},pts=0,vidas=3,ronda=0,nombre='',lista=[],cur=null;
+
+function updateStats(){document.getElementById('stats').innerText=`Rango: ${getRank()} • ${stats.w}W ${stats.l}L • Max nivel: ${stats.max}/200 • ${stats.pts} pts`; document.getElementById('progress').style.width=(stats.max/200*100)+'%'; document.getElementById('progText').innerText=`Progreso: ${stats.max}/200`; }
+function getRank(){if(stats.max>=180) return 'Senior CBTIS'; if(stats.max>=120) return 'Semi-Senior'; if(stats.max>=60) return 'Junior'; return 'Novato';}
+updateStats();
+
+// GENERADOR DE 200 NIVELES REALES
+function genLevels(){
+ const templates=[
+  {t:"If con =",d:"Asignas en vez de comparar",b:(a)=>`if(${a} = 5)`,k:"==",live:"Siempre true ❌",ok:"Comparado ✔",cat:"aprendiz"},
+  {t:"For infinito",d:"i-- nunca termina",b:()=>`for(let i=0;i<5;i--)`,k:"i++",live:"0 loops",ok:"5 loops",cat:"aprendiz"},
+  {t:"Variable sin let",d:"Sin declarar",b:(a)=>`${a} = 10`,k:"let",live:"ReferenceError",ok:"Declarado",cat:"aprendiz"},
+  {t:"Console mal",d:"print no existe en JS",b:()=>`print("hola")`,k:"console.log",live:"print not defined",ok:"hola",cat:"aprendiz"},
+  {t:"Array sin ]",d:"Corchete sin cerrar",b:()=>`let x=["a","b"`,k:"]",live:"SyntaxError",ok:"Array OK",cat:"aprendiz"},
+  {t:"Suma texto",d:'"5"+"5" da "55"',b:()=>`"5"+"5"`,k:"Number",live:"55",ok:"10",cat:"aprendiz"},
+  {t:"Función sin return",d:"No retorna",b:(f)=>`function ${f}(h){h*100}`,k:"return",live:"undefined",ok:"Calculado",cat:"intermedio"},
+  {t:"Total no acumula",d:"= en vez de +=",b:()=>`total = precio`,k:"+=",live:"$0",ok:"$ acumulado",cat:"intermedio"},
+  {t:"Click muerto",d:"onclick null",b:()=>`btn.onclick = null`,k:"function",live:"Botón muerto",ok:"Botón vivo",cat:"intermedio"},
+  {t:"Length mal escrito",d:"lenght typo",b:()=>`arr.lenght`,k:"length",live:"undefined",ok:"5 items",cat:"intermedio"},
+  {t:"Carro velocidad 0",d:"Carro no avanza",b:()=>`let velocidad = 0`,k:">0",check:v=>{let n=parseInt((v.match(/\d+/)||[0])[0]);return n>0},live:"🚗 0 km/h",ok:"🚗💨 30 km/h",cat:"experto"},
+  {t:"Img jgp",d:"Extensión mal",b:()=>`<img src="foto.jgp">`,k:"jpg",live:"IMG 404",ok:"IMG OK",cat:"experto"},
+  {t:"API userz",d:"Endpoint typo",b:()=>`fetch("/api/userz")`,k:"/api/users",live:"404",ok:"200 OK",cat:"experto"},
+  {t:"Input sin.value",d:"Lees elemento",b:()=>`if(input == "")`,k:".value",live:"Siempre pasa",ok:"Validado",cat:"experto"}
+ ];
+ const locs=["DIRECCIÓN","SALA CÓMPUTO","CAFETERÍA","CONTROL","ALMACÉN","TURISMO","LOGÍSTICA","ENTRADA","API","FORM"];
+ const names=["acceso","total","usuario","precio","stock","login","btn","img","velocidad","contador"];
+ let out=[];
+ for(let i=0;i<200;i++){
+   let tpl=templates[i%templates.length];
+   let name=names[i%names.length]+Math.floor(i/10);
+   let bug=typeof tpl.b==='function'?tpl.b(name):tpl.b;
+   // variar un poco el bug para no repetir exacto
+   if(i>14) bug=bug.replace('5',`${5+(i%5)}`).replace('0',`${i%3}`);
+   out.push({n:i+1,t:`${tpl.t} #${i+1}`,d:tpl.d,b:bug,k:tpl.k,check:tpl.check,live:tpl.live,ok:tpl.ok,cat:tpl.cat,loc:locs[i%locs.length]});
+ }
+ return out;
+}
+
+let ALL=genLevels();
+
+function buildList(){let d=document.getElementById('diff').value; if(d=='all') return ALL; return ALL.filter(x=>x.cat==d);}
+function startSolo(){nombre=document.getElementById('pName').value||'Dev'; lista=buildList(); iniciar();}
+function iniciar(){ronda=0;pts=0;vidas=3;document.getElementById('menu').style.display='none';document.getElementById('game').style.display='flex'; mostrar();}
+function mostrar(){
+ if(vidas<=0){fin(false);return;}
+ cur=lista[ronda]; if(!cur){fin(true);return;}
+ document.getElementById('tInfo').innerText=`${cur.loc} • ${cur.n}/200 • ${cur.cat.toUpperCase()}`;
+ document.getElementById('qT').innerText=cur.t; document.getElementById('qN').innerText=`Nivel ${cur.n}`; document.getElementById('qD').innerText=cur.d; document.getElementById('qCode').innerText=cur.b;
+ document.getElementById('live').innerHTML=`<span style="font-family:JetBrains Mono">${cur.live}</span>`; document.getElementById('tScore').innerText=pts+' pts'; document.getElementById('tLives').innerText='●'.repeat(vidas);
+ document.getElementById('gameProgress').style.width=(cur.n/200*100)+'%'; document.getElementById('ans').value=''; document.getElementById('feed').innerText=''; updateBoard();
+}
+function check(){
+ let v=document.getElementById('ans').value.trim(); if(!v)return;
+ let ok=cur.check?cur.check(v):v.toLowerCase().includes(cur.k.toLowerCase());
+ if(ok){document.getElementById('live').innerHTML=`<span style="color:#00a651;font-weight:700;font-family:JetBrains Mono">${cur.ok}</span>`; pts+=10; if(cur.n>stats.max) stats.max=cur.n; document.getElementById('feed').innerText=`✔ Correcto +10`; document.getElementById('feed').style.color='#00FF88'; ronda++; setTimeout(mostrar,700); broadcast({type:'score',name:nombre,pts,n:cur.n});
+ } else {document.getElementById('feed').innerText=`✘ Sigue roto: ${cur.d}`; document.getElementById('feed').style.color='#ff4d4d';}
+}
+function fin(g){if(g) stats.w++; else stats.l++; stats.pts+=pts; localStorage.setItem('abe200',JSON.stringify(stats)); alert((g?'¡200 COMPLETADOS! ':'Fin ')+pts+' pts • Max: '+stats.max+'/200'); location.reload();}
+function updateBoard(){let html=Object.values(players).map(p=>`${p.name}:${p.pts||0}(Nv${p.n||0})`).join(' • '); if(nombre) html=`${nombre}:${pts}(Nv${cur?.n||0}) • `+html; document.getElementById('mBoard').innerText=html; document.getElementById('players').innerText=html;}
+
+function crear(){nombre=document.getElementById('pName').value||'Host'; peer=new Peer({config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}}); peer.on('open',id=>{document.getElementById('roomCode').value=id; document.getElementById('mpStatus').innerText='Sala '+id; isHost=true; players[nombre]={name:nombre,pts:0,n:0};}); peer.on('connection',c=>{conns.push(c); c.on('data',d=>{if(d.type=='join'){players[d.name]={name:d.name,pts:0,n:0}; broadcast({type:'players',players}); updateBoard();} if(d.type=='score'){players[d.name]={name:d.name,pts:d.pts,n:d.n}; updateBoard();}});});}
+function unir(){nombre=document.getElementById('pName').value||'Jugador'; let code=document.getElementById('roomCode').value.trim(); if(!code)return; peer=new Peer(); peer.on('open',()=>{let c=peer.connect(code); conns=[c]; c.on('open',()=>{c.send({type:'join',name:nombre}); document.getElementById('mpStatus').innerText='Conectado '+nombre;}); c.on('data',d=>{if(d.type=='players'){players=d.players; updateBoard();} if(d.type=='start'){lista=buildList(); iniciar();}});});}
+function broadcast(m){conns.forEach(c=>{try{c.send(m)}catch{}});}
+function startMulti(){if(!isHost && conns.length==0){alert('Crea o únete');return;} if(isHost) broadcast({type:'start'}); lista=buildList(); iniciar();}
+document.addEventListener('keydown',e=>{if(e.key==='Enter') check();});
+</script>
+</body>
